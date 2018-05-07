@@ -1,0 +1,122 @@
+HARDWARE
+--------
+	This OS is made assuming about 1990 computer specs (i386 processor,
+	1MB RAM, 1.44MB Floppy disk). 
+
+
+DISK STRUCTURE
+--------------
+	0x0		-	0x1ff		bootloader
+	0x200	-	0x2ff		inode bitmap
+	0x300	-	0x3ff		block bitmap
+	0x400	-	0x803ff		inodes
+	0x80400	-	0x167fff	blocks
+
+
+FILE SYSTEM
+-----------
+	File system is used to control how data is stored and retrieved, and also
+	is responsible for keeping track of the data.
+
+	The fundamental operations of any filesystem are:
+	- Creating files
+	- Reading data from files into memory
+	- Updating the data in the files
+	- Deleting files
+
+	Each bitmap, inode bitmap and block bitmap, keeps track of whether inodes or blocks
+	are in use or not.
+	inode is data structure that has been used for a long time in a Unix-style file system.
+	In order to keep track of data, inode contains information about that.
+ 
+struct inode {
+	union {
+		int16_t in_nrs[128];
+		uint16_t blk_nrs[128];
+	} nrs;
+	char name[256];
+};
+
+	If inode number is negative, the inode is directory inode, and if positive,
+	it is file inode.
+	inode numbers or block numbers are stored in nrs. If the inode is directory inode,
+	nrs is accessed by in_nrs and if file inode, it is accessed by blk_nrs. name
+	contains the file name of up to 255 characters.
+
+
+MEMORY STRUCTURE
+----------------
+	0x500	-	0xfff0		kernel image, kernel heap, kernel stack
+	0x10000	-	0x8ffff		pages for user processes
+
+
+MEMORY MANAGEMENT
+-----------------
+	The essential requirement of memory management is to provide ways
+	to allocate memory to programs, and free it for reuse when no longer needed.
+	This is critical part of any OS.
+
+	The x86 platform has two methods for handling the mapping between virtual
+	and physical addresses. The two methods, paging and segmentation, each use
+	a very different system to manage memory mapping. Along with paging, this OS
+	uses a bitmap for page frame management, and adopts demand paging for
+	virtual memory management. Thus, only if attempt is made to access a page
+	and the page is not already allocated, then page fault occurs and a page
+	is allocated in that handler.
+
+struct heap_blk_hdr {
+	struct heap_blk_hdr *next;
+	struct heap_blk_hdr *prev;
+	bool in_use;
+	size_t size;
+};
+
+	Kernel heap is managed in a linked list. 
+	next points to next heap block. prev points to previous heap block. in_use
+	indicates whether the heap block is in use or not. size contains size of
+	the heap block.
+
+	Several algorithms can be used to allocate heap blocks. Particularly
+	first fit is simplest one. malloc scans along the list of heap block
+	until it finds a unused heap block that is big enough. The unused heap block
+	is then broken up into two pieces, one for the process and one for the
+	unused heap block, except in the case of an exact fit.
+
+
+PROCESS MANAGEMENT
+------------------
+	There are many concepts that OS developer can apply to process management,
+	multitasking, singletasking, preemptive, non preemptive so on. Thus,
+	goal of process management vary depending on the OS.
+
+	Probably the most simple scheduling concept is adopted in this OS.
+	It is non preemptive singletasking. Which means that a program will not
+	be interrupted except that the program itself calls exec, and only one program
+	can be running at once.
+
+	The process structure is a simple one, as other structures are.
+
+struct process {
+	struct process *parent;
+	struct process *child;
+	char name[256];
+	uint8_t pf_nrs[128];
+	struct registers regs;
+};
+
+	Each created process structure is managed in a linked list. name contains
+	the name of the process. pf_nrs contains page frame numbers of each process.
+	Register values when task switch occurs is saved in regs. These values
+	are required to resume the process.
+
+
+SYSTEM CALL
+-----------
+	In terms of security, it is not good for user to be able to execute kernel 
+	code freely. Therefore, privileges are divided between the kernel and the user.
+	In order to execute kernel services, user application can invoke system calls.
+
+	In order to actually invoke the kernel services, in each system call functions,
+	int 0x80 is used. Arguments are passed using registers, in the order of EAX,
+	EDX and ECX. And system call number is stored in EBX.
+	Although similar function names are present, those are not compatible with POSIX.
